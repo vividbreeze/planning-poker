@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["esnext"],
+    "strict": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "outDir": "dist-server",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "declaration": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["server.ts", "src/server/**/*.ts", "src/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
