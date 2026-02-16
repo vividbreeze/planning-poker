@@ -142,6 +142,9 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       return;
     }
 
+    // Join the socket.io room so the participant can receive admin-reconnected events
+    socket.join(roomId);
+
     const hasAdmin = roomHasAdmin(roomId);
     socket.emit("room-check-result", { exists: true, hasAdmin });
   });

@@ -125,6 +125,10 @@ export default function RoomPage() {
 
     const handleAdminReconnected = () => {
       setWaitingForAdmin(false);
+      // Re-check room when admin reconnects (in case we were waiting)
+      if (sessionId && displayName) {
+        joinRoom(displayName, sessionId);
+      }
     };
 
     socket.on("admin-disconnected", handleAdminDisconnected);
@@ -134,7 +138,7 @@ export default function RoomPage() {
       socket.off("admin-disconnected", handleAdminDisconnected);
       socket.off("admin-reconnected", handleAdminReconnected);
     };
-  }, [socket]);
+  }, [socket, sessionId, displayName, joinRoom]);
 
   // Reset selected vote when a new round starts (votes reset)
   useEffect(() => {
