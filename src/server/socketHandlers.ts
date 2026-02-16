@@ -182,6 +182,22 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       if (existing.isAdmin && room.adminDisconnectTimer) {
         clearTimeout(room.adminDisconnectTimer);
         room.adminDisconnectTimer = null;
+
+        // Clean up disconnected participants
+        const disconnectedSessions: string[] = [];
+        for (const [sid, p] of room.participants.entries()) {
+          if (!p.isConnected && sid !== sessionId) {
+            room.participants.delete(sid);
+            room.votes.delete(sid);
+            disconnectedSessions.push(sid);
+          }
+        }
+
+        // Notify about removed participants
+        for (const sid of disconnectedSessions) {
+          io.to(roomId).emit("participant-left", sid);
+        }
+
         // Notify all participants that admin is back
         io.to(roomId).emit("admin-reconnected");
       }
@@ -213,6 +229,22 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
         if (room.adminDisconnectTimer) {
           clearTimeout(room.adminDisconnectTimer);
           room.adminDisconnectTimer = null;
+
+          // Clean up all disconnected participants
+          const disconnectedSessions: string[] = [];
+          for (const [sid, p] of room.participants.entries()) {
+            if (!p.isConnected && sid !== sessionId) {
+              room.participants.delete(sid);
+              room.votes.delete(sid);
+              disconnectedSessions.push(sid);
+            }
+          }
+
+          // Notify about removed participants
+          for (const sid of disconnectedSessions) {
+            socket.to(roomId).emit("participant-left", sid);
+          }
+
           // Notify all participants that admin is back
           io.to(roomId).emit("admin-reconnected");
         }
@@ -432,6 +464,13 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       io.to(roomId).emit("admin-disconnected");
 
       room.adminDisconnectTimer = setTimeout(() => {
+        // Before closing, remove all disconnected participants (cleanup)
+        for (const [sid, p] of room.participants.entries()) {
+          if (!p.isConnected) {
+            room.participants.delete(sid);
+          }
+        }
+
         // Close the room
         io.to(roomId).emit("room-closed");
         deleteRoom(roomId);

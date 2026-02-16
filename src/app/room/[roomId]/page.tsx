@@ -38,9 +38,9 @@ export default function RoomPage() {
     stopTimer,
   } = useRoom(roomId, sessionId);
 
-  // Check room existence first
+  // Check room existence first (only after we have a name)
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected || needsName) return;
 
     const handleRoomCheckResult = (result: { exists: boolean; hasAdmin: boolean }) => {
       setRoomChecked(true);
@@ -67,7 +67,7 @@ export default function RoomPage() {
     return () => {
       socket.off("room-check-result", handleRoomCheckResult);
     };
-  }, [socket, isConnected, roomId]);
+  }, [socket, isConnected, roomId, needsName]);
 
   // Initialize session
   useEffect(() => {
