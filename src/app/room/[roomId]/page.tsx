@@ -38,9 +38,29 @@ export default function RoomPage() {
     stopTimer,
   } = useRoom(roomId, sessionId);
 
-  // Check room existence first (only after we have a name)
+  // Initialize session
   useEffect(() => {
-    if (!isConnected || needsName) return;
+    const storedSession = sessionStorage.getItem(SESSION_ID_KEY);
+    const storedName = sessionStorage.getItem(DISPLAY_NAME_KEY);
+
+    if (storedSession && storedName) {
+      setSessionId(storedSession);
+      setDisplayName(storedName);
+      setNeedsName(false);
+    } else {
+      setNeedsName(true);
+    }
+  }, []);
+
+  // Check room existence (only after we know if we need a name)
+  useEffect(() => {
+    if (!isConnected) return;
+
+    // Wait until needsName is determined (after initialization)
+    if (sessionId === null && displayName === null) return;
+
+    // If we need a name, don't check the room yet
+    if (needsName) return;
 
     const handleRoomCheckResult = (result: { exists: boolean; hasAdmin: boolean }) => {
       setRoomChecked(true);
@@ -67,20 +87,7 @@ export default function RoomPage() {
     return () => {
       socket.off("room-check-result", handleRoomCheckResult);
     };
-  }, [socket, isConnected, roomId, needsName]);
-
-  // Initialize session
-  useEffect(() => {
-    const storedSession = sessionStorage.getItem(SESSION_ID_KEY);
-    const storedName = sessionStorage.getItem(DISPLAY_NAME_KEY);
-
-    if (storedSession && storedName) {
-      setSessionId(storedSession);
-      setDisplayName(storedName);
-    } else {
-      setNeedsName(true);
-    }
-  }, []);
+  }, [socket, isConnected, roomId, needsName, sessionId, displayName]);
 
   // Join room once we have session, connection, and room is valid
   useEffect(() => {
