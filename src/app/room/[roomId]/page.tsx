@@ -237,9 +237,18 @@ export default function RoomPage() {
     );
   }
 
-  // Needs name (only show if room is valid)
-  if (needsName && roomChecked && roomExists && !waitingForAdmin) {
-    return <JoinRoomForm roomId={roomId} onJoin={handleJoin} />;
+  // Needs name (show before checking room, or after room is validated)
+  if (needsName) {
+    // If we haven't checked the room yet, show the join form
+    if (!roomChecked) {
+      return <JoinRoomForm roomId={roomId} onJoin={handleJoin} />;
+    }
+    // If we checked and room exists with admin, show join form
+    if (roomExists && !waitingForAdmin) {
+      return <JoinRoomForm roomId={roomId} onJoin={handleJoin} />;
+    }
+    // Otherwise (room doesn't exist or waiting for admin), don't show form
+    // Fall through to other states (Room Not Found or Waiting for Admin)
   }
 
   // Loading
