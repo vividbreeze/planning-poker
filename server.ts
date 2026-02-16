@@ -1,12 +1,12 @@
 import { createServer } from "node:http";
 import next from "next";
 import { Server } from "socket.io";
-import { registerSocketHandlers } from "./src/server/socketHandlers";
-import { startCleanupInterval } from "./src/server/roomStore";
+import { registerSocketHandlers } from "./src/server/socketHandlers.js";
+import { startCleanupInterval } from "./src/server/roomStore.js";
 import {
   ClientToServerEvents,
   ServerToClientEvents,
-} from "./src/types/shared";
+} from "./src/types/shared.js";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "0.0.0.0";

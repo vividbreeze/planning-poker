@@ -1,4 +1,4 @@
-import { RoomSettings, Participant } from "../types/shared";
+import { RoomSettings, Participant } from "../types/shared.js";
 
 export interface ServerParticipant extends Participant {
   socketId: string;

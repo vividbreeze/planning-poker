@@ -1,5 +1,5 @@
-import { ServerRoom } from "./types";
-import { DEFAULT_SETTINGS } from "../types/shared";
+import { ServerRoom } from "./types.js";
+import { DEFAULT_SETTINGS } from "../types/shared.js";
 
 const rooms = new Map<string, ServerRoom>();
 const ROOM_TTL = 24 * 60 * 60 * 1000; // 24 hours

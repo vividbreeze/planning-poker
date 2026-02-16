@@ -5,8 +5,8 @@ import {
   RoomState,
   Vote,
   RoomSettings,
-} from "../types/shared";
-import { ServerParticipant } from "./types";
+} from "../types/shared.js";
+import { ServerParticipant } from "./types.js";
 import {
   createRoom,
   createRoomWithId,
@@ -16,7 +16,7 @@ import {
   unregisterSocket,
   getSocketInfo,
   roomHasAdmin,
-} from "./roomStore";
+} from "./roomStore.js";
 
 type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
