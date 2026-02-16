@@ -54,10 +54,10 @@ export function createRoom(adminSessionId: string): ServerRoom {
 /**
  * Create a room with a specific ID. Used when participants open a room link
  * and the room doesn't exist yet (admin hasn't joined yet).
- * Returns null if the ID is already taken or reserved.
+ * Returns undefined if the ID is already taken or reserved.
  */
-export function createRoomWithId(roomId: string, adminSessionId: string): ServerRoom | null {
-  if (rooms.has(roomId) || usedRoomIds.has(roomId)) return null;
+export function createRoomWithId(roomId: string, adminSessionId: string): ServerRoom | undefined {
+  if (rooms.has(roomId) || usedRoomIds.has(roomId)) return undefined;
 
   const room: ServerRoom = {
     roomId,

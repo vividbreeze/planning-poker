@@ -46,23 +46,23 @@ describe("roomStore", () => {
   describe("createRoomWithId", () => {
     it("should create a room with a specific ID", () => {
       const room = createRoomWithId("TESTROOM1234", "admin-1");
-      expect(room).not.toBeNull();
+      expect(room).toBeDefined();
       expect(room!.roomId).toBe("TESTROOM1234");
       expect(room!.adminSessionId).toBe("admin-1");
     });
 
-    it("should return null if room ID already exists", () => {
+    it("should return undefined if room ID already exists", () => {
       const room1 = createRoom("admin-1");
       const room2 = createRoomWithId(room1.roomId, "admin-2");
-      expect(room2).toBeNull();
+      expect(room2).toBeUndefined();
     });
 
-    it("should return null if room ID is reserved (deleted recently)", () => {
+    it("should return undefined if room ID is reserved (deleted recently)", () => {
       const room = createRoom("admin-del");
       const roomId = room.roomId;
       deleteRoom(roomId);
       const room2 = createRoomWithId(roomId, "admin-new");
-      expect(room2).toBeNull();
+      expect(room2).toBeUndefined();
     });
   });
 

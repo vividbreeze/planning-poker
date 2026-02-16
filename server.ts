@@ -35,4 +35,23 @@ app.prepare().then(() => {
   httpServer.listen(port, () => {
     console.log(`> Planning Poker ready on http://${hostname}:${port}`);
   });
+
+  // Graceful shutdown for Docker / process managers
+  const shutdown = () => {
+    console.log("\n> Shutting down gracefully...");
+    io.close(() => {
+      httpServer.close(() => {
+        console.log("> Server closed.");
+        process.exit(0);
+      });
+    });
+    // Force exit after 10s if graceful shutdown hangs
+    setTimeout(() => {
+      console.error("> Forced shutdown after timeout.");
+      process.exit(1);
+    }, 10_000);
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 });
