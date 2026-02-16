@@ -134,22 +134,16 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
     });
   });
 
-  // --- ensure-room ---
-  // Participant opens /room/ROOMID: create room if it doesn't exist (without admin)
-  socket.on("ensure-room", ({ roomId }, callback) => {
+  // --- check-room ---
+  socket.on("check-room", ({ roomId }) => {
     const room = getRoom(roomId);
-    if (room) {
-      callback({ exists: true, roomId });
-    } else {
-      // Create room without admin – admin will claim it later via /admin link
-      const placeholderSessionId = "__placeholder__";
-      const created = createRoomWithId(roomId, placeholderSessionId);
-      if (created) {
-        callback({ exists: true, roomId });
-      } else {
-        callback({ exists: false, roomId });
-      }
+    if (!room) {
+      socket.emit("room-check-result", { exists: false, hasAdmin: false });
+      return;
     }
+
+    const hasAdmin = roomHasAdmin(roomId);
+    socket.emit("room-check-result", { exists: true, hasAdmin });
   });
 
   // --- join-room ---
@@ -163,6 +157,15 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
     const MAX_PARTICIPANTS = 10;
     const existing = room.participants.get(sessionId);
 
+    // Check if this is an admin reconnect
+    const isAdminReconnect = adminToken && room.adminToken === adminToken;
+
+    // Reject participants if room has no admin (unless this IS the admin)
+    if (!isAdminReconnect && !roomHasAdmin(roomId)) {
+      socket.emit("error", { message: "Waiting for admin" });
+      return;
+    }
+
     // Reject new participants if room is full (reconnections are always allowed)
     if (!existing && room.participants.size >= MAX_PARTICIPANTS) {
       socket.emit("error", { message: "Room is full (max 10 participants)" });
@@ -175,10 +178,12 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       existing.isConnected = true;
       existing.displayName = displayName.trim().slice(0, 20);
 
-      // If admin is reconnecting, cancel the disconnect timer
+      // If admin is reconnecting, cancel the disconnect timer and notify participants
       if (existing.isAdmin && room.adminDisconnectTimer) {
         clearTimeout(room.adminDisconnectTimer);
         room.adminDisconnectTimer = null;
+        // Notify all participants that admin is back
+        io.to(roomId).emit("admin-reconnected");
       }
     } else {
       // Only treat as admin reconnect if the actual admin is disconnected
@@ -200,14 +205,21 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       room.participants.set(sessionId, participant);
 
       // If this is the admin reconnecting with a new session, cancel timer
-      // and transfer admin role from old session
+      // and remove old admin participant
       if (isAdminReconnect && currentAdmin) {
-        currentAdmin.isAdmin = false;
+        // Remove the old admin participant completely
+        room.participants.delete(currentAdmin.sessionId);
+
         if (room.adminDisconnectTimer) {
           clearTimeout(room.adminDisconnectTimer);
           room.adminDisconnectTimer = null;
+          // Notify all participants that admin is back
+          io.to(roomId).emit("admin-reconnected");
         }
         room.adminSessionId = sessionId;
+
+        // Notify others that the old admin left
+        socket.to(roomId).emit("participant-left", currentAdmin.sessionId);
       }
 
       socket.to(roomId).emit("participant-joined", {
@@ -414,8 +426,11 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       hasVoted: participant.hasVoted,
     });
 
-    // If admin disconnected, start grace period
+    // If admin disconnected, notify participants and start grace period
     if (participant.isAdmin) {
+      // Immediately notify all participants that admin is gone
+      io.to(roomId).emit("admin-disconnected");
+
       room.adminDisconnectTimer = setTimeout(() => {
         // Close the room
         io.to(roomId).emit("room-closed");

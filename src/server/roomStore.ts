@@ -80,7 +80,7 @@ export function createRoomWithId(roomId: string, adminSessionId: string): Server
 export function roomHasAdmin(roomId: string): boolean {
   const room = rooms.get(roomId);
   if (!room) return false;
-  return Array.from(room.participants.values()).some((p) => p.isAdmin);
+  return Array.from(room.participants.values()).some((p) => p.isAdmin && p.isConnected);
 }
 
 export function getRoom(roomId: string): ServerRoom | undefined {

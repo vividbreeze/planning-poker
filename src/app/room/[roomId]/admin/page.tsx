@@ -57,15 +57,49 @@ export default function AdminRoomPage() {
 
   // Check if we already have a session (returning admin)
   useEffect(() => {
+    if (!isConnected) return;
+
     const storedSession = sessionStorage.getItem(SESSION_ID_KEY);
     const storedName = sessionStorage.getItem(DISPLAY_NAME_KEY);
     const storedToken = localStorage.getItem(getAdminTokenKey(requestedRoomId));
 
-    if (storedSession && storedName && storedToken) {
-      // Returning admin - use existing session
-      setSessionId(storedSession);
-      setDisplayName(storedName);
-      setActualRoomId(requestedRoomId);
+    if (storedToken) {
+      // Has admin token - check if room still exists first
+      socket.emit("check-room", { roomId: requestedRoomId });
+
+      const handleRoomCheck = (result: { exists: boolean; hasAdmin: boolean }) => {
+        if (result.exists) {
+          // Room still exists - rejoin as returning admin
+          if (storedSession && storedName) {
+            // Has session from same browser tab - use it
+            setSessionId(storedSession);
+            setDisplayName(storedName);
+            setActualRoomId(requestedRoomId);
+          } else {
+            // New tab/browser but has adminToken - create new session and rejoin
+            const newSessionId = `s_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+            const name = storedName || "Admin";
+            sessionStorage.setItem(SESSION_ID_KEY, newSessionId);
+            sessionStorage.setItem(DISPLAY_NAME_KEY, name);
+            setSessionId(newSessionId);
+            setDisplayName(name);
+            setActualRoomId(requestedRoomId);
+          }
+        } else {
+          // Room was closed - need to create new one
+          // Clear old data and start fresh
+          localStorage.removeItem(getAdminTokenKey(requestedRoomId));
+          sessionStorage.removeItem(SESSION_ID_KEY);
+          if (storedName) {
+            setDisplayName(storedName);
+            setNeedsName(false);
+          } else {
+            setNeedsName(true);
+          }
+        }
+      };
+
+      socket.once("room-check-result", handleRoomCheck);
     } else if (storedName) {
       // Has a name from another session, use it directly
       setDisplayName(storedName);
@@ -73,7 +107,7 @@ export default function AdminRoomPage() {
     } else {
       setNeedsName(true);
     }
-  }, [requestedRoomId]);
+  }, [requestedRoomId, socket, isConnected]);
 
   // Once we have a name and connection but no session yet, join as admin
   useEffect(() => {

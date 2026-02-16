@@ -39,9 +39,9 @@ export interface CreateRoomResponse {
   error?: string;
 }
 
-export interface EnsureRoomResponse {
+export interface RoomCheckResult {
   exists: boolean;
-  roomId: string;
+  hasAdmin: boolean;
 }
 
 export interface ClientToServerEvents {
@@ -53,10 +53,7 @@ export interface ClientToServerEvents {
     payload: { roomId: string; displayName: string },
     callback: (response: CreateRoomResponse) => void
   ) => void;
-  "ensure-room": (
-    payload: { roomId: string },
-    callback: (response: EnsureRoomResponse) => void
-  ) => void;
+  "check-room": (payload: { roomId: string }) => void;
   "join-room": (payload: {
     roomId: string;
     displayName: string;
@@ -95,6 +92,7 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "room-state": (state: RoomState) => void;
+  "room-check-result": (result: RoomCheckResult) => void;
   "participant-joined": (participant: Participant) => void;
   "participant-left": (sessionId: string) => void;
   "participant-updated": (participant: Participant) => void;
@@ -104,6 +102,8 @@ export interface ServerToClientEvents {
   "settings-updated": (settings: RoomSettings) => void;
   "timer-started": (startedAt: number) => void;
   "timer-stopped": () => void;
+  "admin-disconnected": () => void;
+  "admin-reconnected": () => void;
   "room-closed": () => void;
   error: (payload: { message: string }) => void;
 }
