@@ -13,9 +13,30 @@
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "planning-poker",
+    "agile",
+    "scrum",
+    "estimation",
+    "real-time",
+    "socket.io",
+    "next.js",
+    "poker-planning"
+  ],
+  "author": "Planning Poker Contributors",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vividbreeze/planning-poker.git"
+  },
+  "homepage": "https://github.com/vividbreeze/planning-poker#readme",
+  "bugs": {
+    "url": "https://github.com/vividbreeze/planning-poker/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "dependencies": {
     "nanoid": "^5.1.6",
     "next": "^16.1.6",

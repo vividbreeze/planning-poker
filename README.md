@@ -208,6 +208,77 @@ All real-time state synchronization happens via Socket.io events. The server is 
 6. Rooms auto-expire after 24 hours
 7. Used room IDs are reserved for 48 hours to prevent link collisions
 
+## Deployment
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+# Required
+NODE_ENV=production
+PORT=3000
+HOSTNAME=0.0.0.0
+
+# Optional
+ALLOWED_ORIGINS=https://yourdomain.com
+LOG_LEVEL=info
+```
+
+### Docker (Recommended)
+
+```bash
+# Build
+docker build -t planning-poker .
+
+# Run
+docker run -d \
+  -p 3000:3000 \
+  -e NODE_ENV=production \
+  --name planning-poker \
+  planning-poker
+
+# Health check
+curl http://localhost:3000/
+```
+
+### Railway / Render / Fly.io
+
+1. Connect your GitHub repository
+2. Set environment variable: `NODE_ENV=production`
+3. Build command: `npm run build`
+4. Start command: `npm start`
+5. Port: Auto-detected from `$PORT`
+
+### Vercel (Not Recommended)
+
+Vercel's serverless architecture doesn't support Socket.io well. Use a containerized platform instead.
+
+### Self-Hosted (PM2)
+
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Build
+npm run build
+
+# Start with PM2
+pm2 start dist-server/server.js --name planning-poker
+
+# Save PM2 configuration
+pm2 save
+
+# Setup auto-restart on reboot
+pm2 startup
+```
+
+### Important Notes
+
+- **In-memory storage**: Rooms are lost on restart. Not suitable for high-availability setups without session persistence.
+- **No horizontal scaling**: Rooms are stored in memory and not shared between instances.
+- **WebSocket support**: Ensure your reverse proxy (nginx, Cloudflare, etc.) supports WebSocket connections.
+
 ## License
 
 ISC
