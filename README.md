@@ -189,9 +189,9 @@ npm run test:all
 
 All real-time state synchronization happens via Socket.io events. The server is the single source of truth.
 
-**Client-to-Server events:** `create-room`, `join-as-admin`, `ensure-room`, `join-room`, `vote`, `reveal`, `reset`, `update-settings`, `delete-estimate`, `clear-user`, `clear-all-participants`, `start-timer`, `stop-timer`
+**Client-to-Server events:** `create-room`, `join-as-admin`, `check-room`, `join-room`, `vote`, `reveal`, `reset`, `update-settings`, `delete-estimate`, `clear-user`, `clear-all-participants`, `start-timer`, `stop-timer`
 
-**Server-to-Client events:** `room-state`, `participant-joined`, `participant-left`, `participant-updated`, `vote-cast`, `votes-revealed`, `votes-reset`, `settings-updated`, `timer-started`, `timer-stopped`, `room-closed`, `error`
+**Server-to-Client events:** `room-state`, `participant-joined`, `participant-left`, `participant-updated`, `vote-cast`, `votes-revealed`, `votes-reset`, `settings-updated`, `timer-started`, `timer-stopped`, `admin-disconnected`, `admin-reconnected`, `error`
 
 ### Authentication
 
