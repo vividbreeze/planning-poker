@@ -12,14 +12,10 @@ const USED_ID_TTL_SECONDS = 48 * 60 * 60; // 48 hours
 const ROOM_KEY_PREFIX = "room:";
 const USED_ID_PREFIX = "usedId:";
 
-// In-memory only: socket mappings and disconnect timers
+// In-memory only: socket mappings
 const socketToRoom = new Map<
   string,
   { roomId: string; sessionId: string }
->();
-const disconnectTimers = new Map<
-  string,
-  ReturnType<typeof setTimeout>
 >();
 
 // --- Serialization ---
@@ -89,7 +85,6 @@ export function deserializeRoom(json: string): ServerRoom {
     createdAt: data.createdAt,
     ttl: data.ttl,
     lastAccessedAt: data.lastAccessedAt,
-    adminDisconnectTimer: null,
   };
 }
 
@@ -145,7 +140,6 @@ export async function createRoom(
     createdAt: now,
     ttl: ROOM_TTL_SECONDS * 1000,
     lastAccessedAt: now,
-    adminDisconnectTimer: null,
   };
 
   await redis.set(
@@ -176,7 +170,6 @@ export async function createRoomWithId(
     createdAt: now,
     ttl: ROOM_TTL_SECONDS * 1000,
     lastAccessedAt: now,
-    adminDisconnectTimer: null,
   };
 
   await redis.set(
@@ -211,13 +204,6 @@ export async function saveRoom(room: ServerRoom): Promise<void> {
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
-  // Clear any in-memory disconnect timer
-  const timer = disconnectTimers.get(roomId);
-  if (timer) {
-    clearTimeout(timer);
-    disconnectTimers.delete(roomId);
-  }
-
   await redis.del(`${ROOM_KEY_PREFIX}${roomId}`);
   // Block this ID for 48h so old links can't land in a new room
   await redis.set(
@@ -234,27 +220,6 @@ export async function roomHasAdmin(roomId: string): Promise<boolean> {
   return Array.from(room.participants.values()).some(
     (p) => p.isAdmin && p.isConnected
   );
-}
-
-// --- Disconnect timer management (in-memory only) ---
-
-export function setDisconnectTimer(
-  roomId: string,
-  timer: ReturnType<typeof setTimeout>
-): void {
-  disconnectTimers.set(roomId, timer);
-}
-
-export function clearDisconnectTimer(roomId: string): void {
-  const timer = disconnectTimers.get(roomId);
-  if (timer) {
-    clearTimeout(timer);
-    disconnectTimers.delete(roomId);
-  }
-}
-
-export function hasDisconnectTimer(roomId: string): boolean {
-  return disconnectTimers.has(roomId);
 }
 
 // --- Socket registration (in-memory, unchanged) ---

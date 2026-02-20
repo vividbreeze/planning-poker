@@ -23,7 +23,6 @@ function createTestRoom(overrides?: Partial<ServerRoom>): ServerRoom {
     createdAt: Date.now(),
     ttl: 30 * 24 * 60 * 60 * 1000,
     lastAccessedAt: Date.now(),
-    adminDisconnectTimer: null,
     ...overrides,
   };
 }
@@ -130,24 +129,6 @@ describe("Serialization", () => {
 
       expect(restored.participants.get("s1")!.isConnected).toBe(true);
       expect(restored.participants.get("s2")!.isConnected).toBe(false);
-    });
-  });
-
-  describe("adminDisconnectTimer is not serialized", () => {
-    it("should set adminDisconnectTimer to null after deserialization", () => {
-      const room = createTestRoom({
-        adminDisconnectTimer: setTimeout(() => {}, 1000) as any,
-      });
-
-      const json = serializeRoom(room);
-      const restored = deserializeRoom(json);
-
-      expect(restored.adminDisconnectTimer).toBeNull();
-
-      // Clean up the timer
-      if (room.adminDisconnectTimer) {
-        clearTimeout(room.adminDisconnectTimer);
-      }
     });
   });
 

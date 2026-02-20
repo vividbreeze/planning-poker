@@ -112,7 +112,6 @@ docker run -d --name planning-poker --restart unless-stopped -p 3000:3000 planni
 ## Notes
 - Containers automatically restart on failure
 - Health checks run every 30 seconds
-- Rooms expire after 60 seconds of admin disconnect
 - Rooms persist for 30 days of inactivity (Redis TTL)
 - Redis data survives container restarts (Docker volume `redis-data`)
 - Room IDs are reserved for 48h after deletion to prevent link collisions

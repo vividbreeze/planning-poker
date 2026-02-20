@@ -24,7 +24,6 @@ export default function RoomPage() {
 
   const {
     roomState,
-    roomClosed,
     error,
     isAdmin,
     joinRoom,
@@ -176,29 +175,6 @@ export default function RoomPage() {
     },
     [sessionId, vote, deleteEstimate, selectedVote]
   );
-
-  // Room closed
-  if (roomClosed) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="text-5xl mb-4">{"👋"}</div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">
-            Room Closed
-          </h2>
-          <p className="text-slate-500 mb-6">
-            This room has been closed by the admin.
-          </p>
-          <button
-            onClick={() => router.push("/")}
-            className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors"
-          >
-            Create New Room
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Waiting for admin
   if (waitingForAdmin) {

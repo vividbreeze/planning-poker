@@ -484,6 +484,85 @@ describe("Socket Handlers", () => {
     });
   });
 
+  describe("admin disconnect", () => {
+    it("should keep room in Redis after admin disconnects", async () => {
+      const admin = createClient();
+      await waitFor(admin, "connect");
+      const { response: createResp } = await createRoomAndWait(admin, "Admin");
+
+      // Verify room exists
+      const dataBefore = await redis.get(`room:${createResp.roomId}`);
+      expect(dataBefore).toBeTruthy();
+
+      // Disconnect admin
+      admin.close();
+
+      // Wait a moment for disconnect to be processed
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Room should still exist in Redis (no timer deletes it)
+      const dataAfter = await redis.get(`room:${createResp.roomId}`);
+      expect(dataAfter).toBeTruthy();
+      const parsed = JSON.parse(dataAfter!);
+      expect(parsed.roomId).toBe(createResp.roomId);
+    });
+
+    it("should emit admin-disconnected to participants when admin leaves", async () => {
+      const admin = createClient();
+      await waitFor(admin, "connect");
+      const { response: createResp } = await createRoomAndWait(admin, "Admin");
+
+      const player = createClient();
+      await waitFor(player, "connect");
+      const sp = waitFor(player, "room-state");
+      (player as any).emit("join-room", {
+        roomId: createResp.roomId,
+        displayName: "Player",
+        sessionId: "p-admin-disc",
+      });
+      await sp;
+
+      // Listen for admin-disconnected on participant
+      const adminDiscP = waitFor(player, "admin-disconnected");
+
+      // Disconnect admin
+      admin.close();
+
+      // Participant should receive admin-disconnected event
+      await adminDiscP;
+
+      player.close();
+    });
+
+    it("should allow admin to reconnect after disconnect", async () => {
+      const admin = createClient();
+      await waitFor(admin, "connect");
+      const { response: createResp } = await createRoomAndWait(admin, "Admin");
+
+      // Disconnect admin
+      admin.close();
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Reconnect with new socket but same admin token
+      const admin2 = createClient();
+      await waitFor(admin2, "connect");
+
+      const stateP = waitFor(admin2, "room-state");
+      (admin2 as any).emit("join-room", {
+        roomId: createResp.roomId,
+        displayName: "Admin",
+        sessionId: createResp.sessionId,
+        adminToken: createResp.adminToken,
+      });
+      const state = await stateP;
+
+      expect(state.roomId).toBe(createResp.roomId);
+      expect(state.participants.some((p: any) => p.isAdmin && p.isConnected)).toBe(true);
+
+      admin2.close();
+    });
+  });
+
   describe("Redis persistence integration", () => {
     it("should persist votes in Redis", async () => {
       const admin = createClient();

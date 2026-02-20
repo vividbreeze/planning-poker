@@ -16,7 +16,6 @@ export interface ServerRoom {
   createdAt: number;
   ttl: number;
   lastAccessedAt: number;
-  adminDisconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 // --- Serialization types for Redis persistence ---

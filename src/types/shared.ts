@@ -104,7 +104,6 @@ export interface ServerToClientEvents {
   "timer-stopped": () => void;
   "admin-disconnected": () => void;
   "admin-reconnected": () => void;
-  "room-closed": () => void;
   error: (payload: { message: string }) => void;
 }
 

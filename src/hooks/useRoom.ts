@@ -20,8 +20,7 @@ type RoomAction =
   | { type: "VOTES_RESET" }
   | { type: "SETTINGS_UPDATED"; payload: RoomSettings }
   | { type: "TIMER_STARTED"; payload: number }
-  | { type: "TIMER_STOPPED" }
-  | { type: "ROOM_CLOSED" };
+  | { type: "TIMER_STOPPED" };
 
 function roomReducer(
   state: RoomState | null,
@@ -118,9 +117,6 @@ function roomReducer(
         timerStartedAt: null,
       };
 
-    case "ROOM_CLOSED":
-      return null;
-
     default:
       return state;
   }
@@ -129,7 +125,6 @@ function roomReducer(
 export function useRoom(roomId: string, sessionId: string | null) {
   const { socket, isConnected } = useSocket();
   const [roomState, dispatch] = useReducer(roomReducer, null);
-  const [roomClosed, setRoomClosed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Use refs to avoid stale closures
@@ -155,10 +150,6 @@ export function useRoom(roomId: string, sessionId: string | null) {
     const onTimerStarted = (t: number) =>
       dispatch({ type: "TIMER_STARTED", payload: t });
     const onTimerStopped = () => dispatch({ type: "TIMER_STOPPED" });
-    const onRoomClosed = () => {
-      dispatch({ type: "ROOM_CLOSED" });
-      setRoomClosed(true);
-    };
     const onError = (e: { message: string }) => setError(e.message);
 
     socket.on("room-state", onRoomState);
@@ -171,7 +162,6 @@ export function useRoom(roomId: string, sessionId: string | null) {
     socket.on("settings-updated", onSettingsUpdated);
     socket.on("timer-started", onTimerStarted);
     socket.on("timer-stopped", onTimerStopped);
-    socket.on("room-closed", onRoomClosed);
     socket.on("error", onError);
 
     return () => {
@@ -185,7 +175,6 @@ export function useRoom(roomId: string, sessionId: string | null) {
       socket.off("settings-updated", onSettingsUpdated);
       socket.off("timer-started", onTimerStarted);
       socket.off("timer-stopped", onTimerStopped);
-      socket.off("room-closed", onRoomClosed);
       socket.off("error", onError);
     };
   }, [socket]);
@@ -307,7 +296,6 @@ export function useRoom(roomId: string, sessionId: string | null) {
 
   return {
     roomState,
-    roomClosed,
     error,
     isConnected,
     isAdmin,

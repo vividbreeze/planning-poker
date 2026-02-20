@@ -17,15 +17,10 @@ import {
   unregisterSocket,
   getSocketInfo,
   roomHasAdmin,
-  setDisconnectTimer,
-  clearDisconnectTimer,
-  hasDisconnectTimer,
 } from "./roomStore.js";
 
 type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-
-const ADMIN_DISCONNECT_GRACE_MS = 60_000; // 60 seconds
 
 function buildRoomState(room: ServerRoom | undefined): RoomState | null {
   if (!room) return null;
@@ -187,10 +182,8 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       existing.isConnected = true;
       existing.displayName = displayName.trim().slice(0, 20);
 
-      // If admin is reconnecting, cancel the disconnect timer and notify participants
-      if (existing.isAdmin && hasDisconnectTimer(roomId)) {
-        clearDisconnectTimer(roomId);
-
+      // If admin is reconnecting, clean up and notify participants
+      if (existing.isAdmin) {
         // Clean up disconnected participants
         const disconnectedSessions: string[] = [];
         for (const [sid, p] of room.participants.entries()) {
@@ -228,33 +221,30 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
 
       room.participants.set(sessionId, participant);
 
-      // If this is the admin reconnecting with a new session, cancel timer
-      // and remove old admin participant
+      // If this is the admin reconnecting with a new session,
+      // remove old admin participant and clean up
       if (isAdminReconnectNew && currentAdmin) {
         // Remove the old admin participant completely
         room.participants.delete(currentAdmin.sessionId);
 
-        if (hasDisconnectTimer(roomId)) {
-          clearDisconnectTimer(roomId);
-
-          // Clean up all disconnected participants
-          const disconnectedSessions: string[] = [];
-          for (const [sid, p] of room.participants.entries()) {
-            if (!p.isConnected && sid !== sessionId) {
-              room.participants.delete(sid);
-              room.votes.delete(sid);
-              disconnectedSessions.push(sid);
-            }
+        // Clean up all disconnected participants
+        const disconnectedSessions: string[] = [];
+        for (const [sid, p] of room.participants.entries()) {
+          if (!p.isConnected && sid !== sessionId) {
+            room.participants.delete(sid);
+            room.votes.delete(sid);
+            disconnectedSessions.push(sid);
           }
-
-          // Notify about removed participants
-          for (const sid of disconnectedSessions) {
-            socket.to(roomId).emit("participant-left", sid);
-          }
-
-          // Notify all participants that admin is back
-          io.to(roomId).emit("admin-reconnected");
         }
+
+        // Notify about removed participants
+        for (const sid of disconnectedSessions) {
+          socket.to(roomId).emit("participant-left", sid);
+        }
+
+        // Notify all participants that admin is back
+        io.to(roomId).emit("admin-reconnected");
+
         room.adminSessionId = sessionId;
 
         // Notify others that the old admin left
@@ -477,32 +467,9 @@ export function registerSocketHandlers(io: TypedServer, socket: TypedSocket) {
       hasVoted: participant.hasVoted,
     });
 
-    // If admin disconnected, notify participants and start grace period
+    // If admin disconnected, notify participants
     if (participant.isAdmin) {
-      // Immediately notify all participants that admin is gone
       io.to(roomId).emit("admin-disconnected");
-
-      const timer = setTimeout(async () => {
-        // Re-fetch room from Redis (may have changed)
-        const currentRoom = await getRoom(roomId);
-        if (!currentRoom) return;
-
-        // Before closing, remove all disconnected participants (cleanup)
-        for (const [sid, p] of currentRoom.participants.entries()) {
-          if (!p.isConnected) {
-            currentRoom.participants.delete(sid);
-          }
-        }
-
-        // Close the room
-        io.to(roomId).emit("room-closed");
-        await deleteRoom(roomId);
-        console.log(
-          `Room ${roomId} closed: admin disconnected for ${ADMIN_DISCONNECT_GRACE_MS / 1000}s`
-        );
-      }, ADMIN_DISCONNECT_GRACE_MS);
-
-      setDisconnectTimer(roomId, timer);
     }
   });
 }
