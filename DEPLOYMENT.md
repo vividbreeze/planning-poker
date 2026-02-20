@@ -7,9 +7,12 @@
 
 ## Current Setup
 - Docker Compose deployment in `/opt/planning-poker`
+- **App container**: Next.js + Socket.io (planning-poker)
+- **Redis container**: Redis 7 Alpine with AOF persistence (planning-poker-redis)
 - Automatic restart enabled
 - Health checks configured
 - Network isolation via dedicated bridge network
+- Redis data persisted on Docker volume (`redis-data`)
 
 ## Deployment Process
 
@@ -107,7 +110,26 @@ docker run -d --name planning-poker --restart unless-stopped -p 3000:3000 planni
 ```
 
 ## Notes
-- Container automatically restarts on failure
+- Containers automatically restart on failure
 - Health checks run every 30 seconds
 - Rooms expire after 60 seconds of admin disconnect
-- No persistent storage - all data is in-memory
+- Rooms persist for 30 days of inactivity (Redis TTL)
+- Redis data survives container restarts (Docker volume `redis-data`)
+- Room IDs are reserved for 48h after deletion to prevent link collisions
+
+## Redis Management
+
+### Check stored rooms
+```bash
+ssh root@srv1372172.hstgr.cloud "docker exec planning-poker-redis redis-cli KEYS 'room:*'"
+```
+
+### View room data
+```bash
+ssh root@srv1372172.hstgr.cloud "docker exec planning-poker-redis redis-cli GET 'room:ROOMID'"
+```
+
+### Check Redis memory usage
+```bash
+ssh root@srv1372172.hstgr.cloud "docker exec planning-poker-redis redis-cli INFO memory"
+```

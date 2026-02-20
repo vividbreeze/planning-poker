@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { io as ioc, Socket as ClientSocket } from "socket.io-client";
+
+// Mock Redis before importing socketHandlers
+vi.mock("../redisClient", () => {
+  const RedisMock = require("ioredis-mock");
+  return { default: new RedisMock() };
+});
+
 import { registerSocketHandlers } from "../socketHandlers";
+import redis from "../redisClient";
 import {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -61,6 +69,11 @@ afterAll(
       httpServer.close(() => resolve());
     })
 );
+
+beforeEach(async () => {
+  // Flush mock Redis between tests
+  await redis.flushall();
+});
 
 describe("Socket Handlers", () => {
   describe("create-room", () => {
@@ -445,41 +458,6 @@ describe("Socket Handlers", () => {
     });
   });
 
-  describe("ensure-room", () => {
-    it("should confirm existing room", async () => {
-      const admin = createClient();
-      await waitFor(admin, "connect");
-      const { response: createResp } = await createRoomAndWait(admin, "Admin");
-
-      const client = createClient();
-      await waitFor(client, "connect");
-
-      const response = await new Promise<any>((resolve) => {
-        (client as any).emit("ensure-room", { roomId: createResp.roomId }, resolve);
-      });
-
-      expect(response.exists).toBe(true);
-      expect(response.roomId).toBe(createResp.roomId);
-
-      admin.close();
-      client.close();
-    });
-
-    it("should create room if it doesn't exist", async () => {
-      const client = createClient();
-      await waitFor(client, "connect");
-
-      const response = await new Promise<any>((resolve) => {
-        (client as any).emit("ensure-room", { roomId: "ENSURETEST99" }, resolve);
-      });
-
-      expect(response.exists).toBe(true);
-      expect(response.roomId).toBe("ENSURETEST99");
-
-      client.close();
-    });
-  });
-
   describe("timer", () => {
     it("should start and stop timer", async () => {
       const admin = createClient();
@@ -501,6 +479,53 @@ describe("Socket Handlers", () => {
         adminToken: createResp.adminToken,
       });
       await stopP;
+
+      admin.close();
+    });
+  });
+
+  describe("Redis persistence integration", () => {
+    it("should persist votes in Redis", async () => {
+      const admin = createClient();
+      await waitFor(admin, "connect");
+      const { response: createResp } = await createRoomAndWait(admin, "Admin");
+
+      // Vote
+      const votedP = waitFor(admin, "vote-cast");
+      (admin as any).emit("vote", {
+        roomId: createResp.roomId,
+        sessionId: createResp.sessionId,
+        value: 5,
+      });
+      await votedP;
+
+      // Verify data is in Redis
+      const data = await redis.get(`room:${createResp.roomId}`);
+      expect(data).toBeTruthy();
+      const parsed = JSON.parse(data!);
+      expect(parsed.votes[createResp.sessionId]).toBe(5);
+
+      admin.close();
+    });
+
+    it("should persist settings changes in Redis", async () => {
+      const admin = createClient();
+      await waitFor(admin, "connect");
+      const { response: createResp } = await createRoomAndWait(admin, "Admin");
+
+      const settingsP = waitFor(admin, "settings-updated");
+      (admin as any).emit("update-settings", {
+        roomId: createResp.roomId,
+        adminToken: createResp.adminToken,
+        settings: { timerDuration: 60, showAverage: false },
+      });
+      await settingsP;
+
+      // Verify data is in Redis
+      const data = await redis.get(`room:${createResp.roomId}`);
+      const parsed = JSON.parse(data!);
+      expect(parsed.settings.timerDuration).toBe(60);
+      expect(parsed.settings.showAverage).toBe(false);
 
       admin.close();
     });

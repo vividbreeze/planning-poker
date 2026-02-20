@@ -1,24 +1,106 @@
-import { ServerRoom } from "./types.js";
+import redis from "./redisClient.js";
+import {
+  ServerRoom,
+  ServerParticipant,
+  SerializedRoom,
+  SerializedParticipant,
+} from "./types.js";
 import { DEFAULT_SETTINGS } from "../types/shared.js";
 
-const rooms = new Map<string, ServerRoom>();
-const ROOM_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const ROOM_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+const USED_ID_TTL_SECONDS = 48 * 60 * 60; // 48 hours
+const ROOM_KEY_PREFIX = "room:";
+const USED_ID_PREFIX = "usedId:";
 
-// Track used room IDs for 48h to prevent old links landing in new rooms
-const usedRoomIds = new Map<string, number>(); // roomId -> expiry timestamp
+// In-memory only: socket mappings and disconnect timers
+const socketToRoom = new Map<
+  string,
+  { roomId: string; sessionId: string }
+>();
+const disconnectTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
 
-// Map socketId -> { roomId, sessionId } for disconnect handling
-const socketToRoom = new Map<string, { roomId: string; sessionId: string }>();
+// --- Serialization ---
+
+export function serializeRoom(room: ServerRoom): string {
+  const participants: Record<string, SerializedParticipant> = {};
+  for (const [key, p] of room.participants) {
+    participants[key] = {
+      sessionId: p.sessionId,
+      displayName: p.displayName,
+      isAdmin: p.isAdmin,
+      isConnected: p.isConnected,
+      hasVoted: p.hasVoted,
+    };
+  }
+
+  const votes: Record<string, number> = {};
+  for (const [key, value] of room.votes) {
+    votes[key] = value;
+  }
+
+  const serialized: SerializedRoom = {
+    roomId: room.roomId,
+    adminToken: room.adminToken,
+    adminSessionId: room.adminSessionId,
+    settings: room.settings,
+    participants,
+    votes,
+    isRevealed: room.isRevealed,
+    timerStartedAt: room.timerStartedAt,
+    createdAt: room.createdAt,
+    ttl: room.ttl,
+    lastAccessedAt: Date.now(),
+  };
+  return JSON.stringify(serialized);
+}
+
+export function deserializeRoom(json: string): ServerRoom {
+  const data: SerializedRoom = JSON.parse(json);
+
+  const participants = new Map<string, ServerParticipant>();
+  for (const [key, p] of Object.entries(data.participants)) {
+    participants.set(key, {
+      sessionId: p.sessionId,
+      displayName: p.displayName,
+      isAdmin: p.isAdmin,
+      isConnected: p.isConnected, // preserved; set to false on reconnect if socketId is gone
+      hasVoted: p.hasVoted,
+      socketId: "", // ephemeral — will be set on reconnect
+    });
+  }
+
+  const votes = new Map<string, number>();
+  for (const [key, value] of Object.entries(data.votes)) {
+    votes.set(key, value);
+  }
+
+  return {
+    roomId: data.roomId,
+    adminToken: data.adminToken,
+    adminSessionId: data.adminSessionId,
+    settings: data.settings,
+    participants,
+    votes,
+    isRevealed: data.isRevealed,
+    timerStartedAt: data.timerStartedAt,
+    createdAt: data.createdAt,
+    ttl: data.ttl,
+    lastAccessedAt: data.lastAccessedAt,
+    adminDisconnectTimer: null,
+  };
+}
+
+// --- ID Generation ---
 
 function generateRoomId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I, O, 0, 1 to avoid confusion
-  let id: string;
-  do {
-    id = "";
-    for (let i = 0; i < 12; i++) {
-      id += chars[Math.floor(Math.random() * chars.length)];
-    }
-  } while (rooms.has(id) || usedRoomIds.has(id));
+  let id = "";
+  for (let i = 0; i < 12; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
   return id;
 }
 
@@ -32,9 +114,27 @@ function generateToken(): string {
   return token;
 }
 
-export function createRoom(adminSessionId: string): ServerRoom {
+async function isRoomIdAvailable(id: string): Promise<boolean> {
+  const [roomExists, usedExists] = await Promise.all([
+    redis.exists(`${ROOM_KEY_PREFIX}${id}`),
+    redis.exists(`${USED_ID_PREFIX}${id}`),
+  ]);
+  return roomExists === 0 && usedExists === 0;
+}
+
+// --- Room CRUD ---
+
+export async function createRoom(
+  adminSessionId: string
+): Promise<ServerRoom> {
+  let id: string;
+  do {
+    id = generateRoomId();
+  } while (!(await isRoomIdAvailable(id)));
+
+  const now = Date.now();
   const room: ServerRoom = {
-    roomId: generateRoomId(),
+    roomId: id,
     adminToken: generateToken(),
     adminSessionId,
     settings: { ...DEFAULT_SETTINGS },
@@ -42,23 +142,28 @@ export function createRoom(adminSessionId: string): ServerRoom {
     votes: new Map(),
     isRevealed: false,
     timerStartedAt: null,
-    createdAt: Date.now(),
-    ttl: ROOM_TTL,
+    createdAt: now,
+    ttl: ROOM_TTL_SECONDS * 1000,
+    lastAccessedAt: now,
     adminDisconnectTimer: null,
   };
 
-  rooms.set(room.roomId, room);
+  await redis.set(
+    `${ROOM_KEY_PREFIX}${id}`,
+    serializeRoom(room),
+    "EX",
+    ROOM_TTL_SECONDS
+  );
   return room;
 }
 
-/**
- * Create a room with a specific ID. Used when participants open a room link
- * and the room doesn't exist yet (admin hasn't joined yet).
- * Returns undefined if the ID is already taken or reserved.
- */
-export function createRoomWithId(roomId: string, adminSessionId: string): ServerRoom | undefined {
-  if (rooms.has(roomId) || usedRoomIds.has(roomId)) return undefined;
+export async function createRoomWithId(
+  roomId: string,
+  adminSessionId: string
+): Promise<ServerRoom | undefined> {
+  if (!(await isRoomIdAvailable(roomId))) return undefined;
 
+  const now = Date.now();
   const room: ServerRoom = {
     roomId,
     adminToken: generateToken(),
@@ -68,34 +173,91 @@ export function createRoomWithId(roomId: string, adminSessionId: string): Server
     votes: new Map(),
     isRevealed: false,
     timerStartedAt: null,
-    createdAt: Date.now(),
-    ttl: ROOM_TTL,
+    createdAt: now,
+    ttl: ROOM_TTL_SECONDS * 1000,
+    lastAccessedAt: now,
     adminDisconnectTimer: null,
   };
 
-  rooms.set(roomId, room);
+  await redis.set(
+    `${ROOM_KEY_PREFIX}${roomId}`,
+    serializeRoom(room),
+    "EX",
+    ROOM_TTL_SECONDS
+  );
   return room;
 }
 
-export function roomHasAdmin(roomId: string): boolean {
-  const room = rooms.get(roomId);
-  if (!room) return false;
-  return Array.from(room.participants.values()).some((p) => p.isAdmin && p.isConnected);
+export async function getRoom(
+  roomId: string
+): Promise<ServerRoom | undefined> {
+  const json = await redis.get(`${ROOM_KEY_PREFIX}${roomId}`);
+  if (!json) return undefined;
+
+  // Refresh TTL on access (30 days of inactivity)
+  await redis.expire(`${ROOM_KEY_PREFIX}${roomId}`, ROOM_TTL_SECONDS);
+
+  return deserializeRoom(json);
 }
 
-export function getRoom(roomId: string): ServerRoom | undefined {
-  return rooms.get(roomId);
+export async function saveRoom(room: ServerRoom): Promise<void> {
+  room.lastAccessedAt = Date.now();
+  await redis.set(
+    `${ROOM_KEY_PREFIX}${room.roomId}`,
+    serializeRoom(room),
+    "EX",
+    ROOM_TTL_SECONDS
+  );
 }
 
-export function deleteRoom(roomId: string): void {
-  const room = rooms.get(roomId);
-  if (room?.adminDisconnectTimer) {
-    clearTimeout(room.adminDisconnectTimer);
+export async function deleteRoom(roomId: string): Promise<void> {
+  // Clear any in-memory disconnect timer
+  const timer = disconnectTimers.get(roomId);
+  if (timer) {
+    clearTimeout(timer);
+    disconnectTimers.delete(roomId);
   }
-  rooms.delete(roomId);
+
+  await redis.del(`${ROOM_KEY_PREFIX}${roomId}`);
   // Block this ID for 48h so old links can't land in a new room
-  usedRoomIds.set(roomId, Date.now() + 48 * 60 * 60 * 1000);
+  await redis.set(
+    `${USED_ID_PREFIX}${roomId}`,
+    "1",
+    "EX",
+    USED_ID_TTL_SECONDS
+  );
 }
+
+export async function roomHasAdmin(roomId: string): Promise<boolean> {
+  const room = await getRoom(roomId);
+  if (!room) return false;
+  return Array.from(room.participants.values()).some(
+    (p) => p.isAdmin && p.isConnected
+  );
+}
+
+// --- Disconnect timer management (in-memory only) ---
+
+export function setDisconnectTimer(
+  roomId: string,
+  timer: ReturnType<typeof setTimeout>
+): void {
+  disconnectTimers.set(roomId, timer);
+}
+
+export function clearDisconnectTimer(roomId: string): void {
+  const timer = disconnectTimers.get(roomId);
+  if (timer) {
+    clearTimeout(timer);
+    disconnectTimers.delete(roomId);
+  }
+}
+
+export function hasDisconnectTimer(roomId: string): boolean {
+  return disconnectTimers.has(roomId);
+}
+
+// --- Socket registration (in-memory, unchanged) ---
 
 export function registerSocket(
   socketId: string,
@@ -121,27 +283,4 @@ export function unregisterSocket(socketId: string): {
     socketToRoom.delete(socketId);
   }
   return info;
-}
-
-export function startCleanupInterval(): void {
-  setInterval(() => {
-    const now = Date.now();
-    // Clean expired rooms
-    for (const [roomId, room] of rooms) {
-      if (now - room.createdAt > room.ttl) {
-        if (room.adminDisconnectTimer) {
-          clearTimeout(room.adminDisconnectTimer);
-        }
-        rooms.delete(roomId);
-        usedRoomIds.set(roomId, now + 48 * 60 * 60 * 1000);
-        console.log(`Room ${roomId} expired and removed`);
-      }
-    }
-    // Clean expired used-ID reservations
-    for (const [id, expiry] of usedRoomIds) {
-      if (now > expiry) {
-        usedRoomIds.delete(id);
-      }
-    }
-  }, 5 * 60 * 1000);
 }

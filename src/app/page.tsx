@@ -20,7 +20,7 @@ export default function Home() {
       <div className="mt-12 text-center text-sm text-slate-400 max-w-md">
         <p>
           Create a room, share the link with your team, and start estimating.
-          Rooms expire after 24 hours.
+          Rooms expire after 30 days of inactivity.
         </p>
       </div>
     </div>

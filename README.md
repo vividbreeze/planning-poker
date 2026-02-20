@@ -14,9 +14,9 @@ Real-time Scrum estimation tool for agile teams. No sign-up required.
 - **Separate admin/participant links** -- Admin link (`/room/ROOMID/admin`) vs. participant link (`/room/ROOMID`)
 - **Auto-room creation** -- Participants opening a link for a non-existent room get it created automatically
 - **Reconnection handling** -- Participants and admins can reconnect after temporary disconnects
-- **Room expiry** -- Rooms auto-expire after 24 hours; room IDs are reserved for 48h to prevent reuse
+- **Room expiry** -- Rooms auto-expire after 30 days of inactivity; room IDs are reserved for 48h to prevent reuse
 - **Max 10 participants per room**
-- **No database required** -- All state is held in-memory
+- **Redis persistence** -- Room state survives server restarts and redeployments
 
 ## Tech Stack
 
@@ -24,8 +24,9 @@ Real-time Scrum estimation tool for agile teams. No sign-up required.
 - **Styling**: Tailwind CSS v4
 - **Real-time**: Socket.io 4
 - **Server**: Custom Node.js HTTP server (required because Next.js App Router can't access `res.socket`)
+- **Storage**: Redis (ioredis) with 30-day TTL and AOF persistence
 - **Testing**: Vitest (unit/integration), Playwright (E2E)
-- **Deployment**: Docker-ready (multi-stage Dockerfile included)
+- **Deployment**: Docker Compose (App + Redis)
 
 ## Getting Started
 
@@ -196,7 +197,7 @@ All real-time state synchronization happens via Socket.io events. The server is 
 
 - Admin authentication uses a randomly generated `adminToken` stored in `localStorage`
 - Session tracking uses a `sessionId` stored in `sessionStorage`
-- No login, no passwords, no database
+- No login, no passwords
 
 ### Room Lifecycle
 
@@ -205,7 +206,7 @@ All real-time state synchronization happens via Socket.io events. The server is 
 3. Voting rounds repeat (vote, reveal, new round)
 4. If admin disconnects, a 60-second grace period starts
 5. If admin doesn't reconnect within 60s, room is closed
-6. Rooms auto-expire after 24 hours
+6. Rooms auto-expire after 30 days of inactivity
 7. Used room IDs are reserved for 48 hours to prevent link collisions
 
 ## Deployment
@@ -219,64 +220,29 @@ Copy `.env.example` to `.env` and configure:
 NODE_ENV=production
 PORT=3000
 HOSTNAME=0.0.0.0
+REDIS_URL=redis://localhost:6379
 
 # Optional
 ALLOWED_ORIGINS=https://yourdomain.com
 LOG_LEVEL=info
 ```
 
-### Docker (Recommended)
+### Docker Compose (Recommended)
 
 ```bash
-# Build
+# Build and start (App + Redis)
 docker build -t planning-poker .
-
-# Run
-docker run -d \
-  -p 3000:3000 \
-  -e NODE_ENV=production \
-  --name planning-poker \
-  planning-poker
+docker compose up -d
 
 # Health check
 curl http://localhost:3000/
 ```
 
-### Railway / Render / Fly.io
-
-1. Connect your GitHub repository
-2. Set environment variable: `NODE_ENV=production`
-3. Build command: `npm run build`
-4. Start command: `npm start`
-5. Port: Auto-detected from `$PORT`
-
-### Vercel (Not Recommended)
-
-Vercel's serverless architecture doesn't support Socket.io well. Use a containerized platform instead.
-
-### Self-Hosted (PM2)
-
-```bash
-# Install PM2 globally
-npm install -g pm2
-
-# Build
-npm run build
-
-# Start with PM2
-pm2 start dist-server/server.js --name planning-poker
-
-# Save PM2 configuration
-pm2 save
-
-# Setup auto-restart on reboot
-pm2 startup
-```
+Redis data is persisted on a Docker volume (`redis-data`), so rooms survive container restarts and redeployments.
 
 ### Important Notes
 
-- **In-memory storage**: Rooms are lost on restart. Not suitable for high-availability setups without session persistence.
-- **No horizontal scaling**: Rooms are stored in memory and not shared between instances.
+- **Redis required**: The app requires a Redis instance for room persistence.
 - **WebSocket support**: Ensure your reverse proxy (nginx, Cloudflare, etc.) supports WebSocket connections.
 
 ## License

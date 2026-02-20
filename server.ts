@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { Server } from "socket.io";
 import { registerSocketHandlers } from "./src/server/socketHandlers.js";
-import { startCleanupInterval } from "./src/server/roomStore.js";
+import redis from "./src/server/redisClient.js";
 import {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -26,7 +26,16 @@ process.on("uncaughtException", (error) => {
 const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  // Verify Redis connection
+  try {
+    await redis.ping();
+    console.log("> Redis connection verified");
+  } catch (err) {
+    console.error("> Failed to connect to Redis:", err);
+    process.exit(1);
+  }
+
   const httpServer = createServer(handler);
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(
@@ -41,8 +50,6 @@ app.prepare().then(() => {
     registerSocketHandlers(io, socket);
   });
 
-  startCleanupInterval();
-
   httpServer.listen(port, () => {
     console.log(`> Planning Poker ready on http://${hostname}:${port}`);
   });
@@ -51,9 +58,17 @@ app.prepare().then(() => {
   const shutdown = () => {
     console.log("\n> Shutting down gracefully...");
     io.close(() => {
-      httpServer.close(() => {
-        console.log("> Server closed.");
-        process.exit(0);
+      redis.quit().then(() => {
+        console.log("> Redis connection closed.");
+        httpServer.close(() => {
+          console.log("> Server closed.");
+          process.exit(0);
+        });
+      }).catch(() => {
+        httpServer.close(() => {
+          console.log("> Server closed.");
+          process.exit(0);
+        });
       });
     });
     // Force exit after 10s if graceful shutdown hangs
